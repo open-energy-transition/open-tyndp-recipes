@@ -1,0 +1,81 @@
+name: PR Build Check
+
+on:
+  pull_request:
+    paths:
+      - 'recipes/**'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Setup pixi
+        uses: prefix-dev/setup-pixi@v0.8.1
+        with:
+          pixi-version: latest
+          cache: true
+
+      - name: Detect changed recipes
+        id: detect
+        run: |
+          BASE_REF="${{ github.event.pull_request.base.sha }}"
+
+          CHANGED_FILES=$(git diff --name-only $BASE_REF HEAD)
+          RECIPES=$(echo "$CHANGED_FILES" | \
+            grep '^recipes/' | \
+            cut -d/ -f2 | \
+            sort -u | \
+            jq -R -s -c 'split("\n") | map(select(length > 0))')
+
+          echo "recipes=$RECIPES" >> $GITHUB_OUTPUT
+
+          if [ "$RECIPES" == "[]" ] || [ -z "$RECIPES" ]; then
+            echo "No recipe changes detected"
+          else
+            echo "Changed recipes: $RECIPES"
+          fi
+
+      - name: Build recipes
+        if: steps.detect.outputs.recipes != '[]'
+        run: |
+          RECIPES='${{ steps.detect.outputs.recipes }}'
+          echo "$RECIPES" | jq -r '.[]' | while read recipe; do
+            echo "Building $recipe..."
+            pixi run build "recipes/$recipe"
+          done
+
+      - name: Upload build artifacts
+        if: steps.detect.outputs.recipes != '[]'
+        uses: actions/upload-artifact@v4
+        with:
+          name: conda-packages
+          path: ./conda-bld/*/*.conda
+          retention-days: 7
+
+      - name: Comment on PR
+        if: steps.detect.outputs.recipes != '[]' && success()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const recipes = ${{ steps.detect.outputs.recipes }};
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `✅ Successfully built recipes: ${recipes.join(', ')}\n\nDownload the artifacts to test locally before merging.`
+            })
+
+      - name: Build summary
+        if: steps.detect.outputs.recipes != '[]'
+        run: |
+          echo "## Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "Changed recipes: ${{ steps.detect.outputs.recipes }}" >> $GITHUB_STEP_SUMMARY
+          echo "📦 Packages built and available as artifacts" >> $GITHUB_STEP_SUMMARY
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Built Packages" >> $GITHUB_STEP_SUMMARY
+          find ./conda-bld -name "*.conda" -exec basename {} \; >> $GITHUB_STEP_SUMMARY

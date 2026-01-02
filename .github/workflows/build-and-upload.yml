@@ -1,0 +1,77 @@
+name: Build and Upload to Channel
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'recipes/**'
+
+env:
+  PREFIX_CHANNEL: open-tyndp
+
+jobs:
+  build-and-upload:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Setup pixi
+        uses: prefix-dev/setup-pixi@v0.8.1
+        with:
+          pixi-version: latest
+          cache: true
+
+      - name: Detect changed recipes
+        id: detect
+        run: |
+          # For squash merges
+          BASE_REF="HEAD^"
+
+          CHANGED_FILES=$(git diff --name-only $BASE_REF HEAD)
+          RECIPES=$(echo "$CHANGED_FILES" | \
+            grep '^recipes/' | \
+            cut -d/ -f2 | \
+            sort -u | \
+            jq -R -s -c 'split("\n") | map(select(length > 0))')
+
+          echo "recipes=$RECIPES" >> $GITHUB_OUTPUT
+
+          if [ "$RECIPES" == "[]" ] || [ -z "$RECIPES" ]; then
+            echo "No recipe changes detected"
+          else
+            echo "Changed recipes: $RECIPES"
+          fi
+
+      - name: Build recipes
+        if: steps.detect.outputs.recipes != '[]'
+        run: |
+          RECIPES='${{ steps.detect.outputs.recipes }}'
+          echo "$RECIPES" | jq -r '.[]' | while read recipe; do
+            echo "Building $recipe..."
+            pixi run build "recipes/$recipe"
+          done
+
+      - name: Upload to prefix.dev
+        if: steps.detect.outputs.recipes != '[]'
+        env:
+          PREFIX_API_KEY: ${{ secrets.PREFIX_API_KEY }}
+          CHANNEL: ${{ env.PREFIX_CHANNEL }}
+        run: |
+          find ./conda-bld -name "*.conda" | while read pkg; do
+            echo "Uploading $(basename $pkg) to $CHANNEL"
+            pixi run rattler-build upload prefix --channel $CHANNEL "$pkg"
+          done
+
+      - name: Build summary
+        if: steps.detect.outputs.recipes != '[]'
+        run: |
+          echo "## Upload Summary" >> $GITHUB_STEP_SUMMARY
+          echo "Changed recipes: ${{ steps.detect.outputs.recipes }}" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Packages uploaded to prefix.dev channel: ${{ env.PREFIX_CHANNEL }}" >> $GITHUB_STEP_SUMMARY
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Uploaded Packages" >> $GITHUB_STEP_SUMMARY
+          find ./conda-bld -name "*.conda" -exec basename {} \; >> $GITHUB_STEP_SUMMARY

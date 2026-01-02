@@ -1,0 +1,26 @@
+# Conda build artifacts
+conda-bld/
+*.conda
+*.tar.bz2
+
+# Pixi environment
+.pixi/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# IDEs
+.vscode/
+.zed/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db

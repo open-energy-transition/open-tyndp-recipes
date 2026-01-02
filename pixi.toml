@@ -1,0 +1,15 @@
+[workspace]
+name = "open-tyndp-recipes"
+version = "0.1.0"
+description = "Custom conda recipe builds for OpenTYNDP project"
+channels = ["conda-forge", "bioconda"]
+platforms = ["linux-64", "osx-64", "osx-arm64", "win-64"]
+
+[dependencies]
+conda-build = "*"
+rattler-build = "*"
+
+[tasks]
+# Helper tasks for local development
+build = "conda-build --no-anaconda-upload -c conda-forge -c bioconda --output-folder ./conda-bld"
+upload-all = "rattler-build upload prefix --channel open-tyndp ./conda-bld/*/*.conda"

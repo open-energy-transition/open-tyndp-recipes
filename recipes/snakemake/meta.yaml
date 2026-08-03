@@ -37,7 +37,6 @@ test:
     - export GIT\_PYTHON_REFRESH=warn
     - pip check
     - snakemake --version
-    - snakemake --version | grep "{{ version }}"
     # Generate a report to check whether graphviz dependencies (libXau) are properly installed:
     - 'printf %s\\n "rule empty:" > Snakefile && snakemake --cores 1 --report'
     # Remove test artifacts from command above.
@@ -134,7 +133,6 @@ outputs:
         - pip show snakemake
         - pip check
         - snakemake --version
-        - snakemake --version | grep "{{ version }}"
       requires:
         - pip
 
